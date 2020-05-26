@@ -1,17 +1,23 @@
+// Miscellaneous subroutines
+
 package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math"
 	"math/rand"
+	"os/exec"
+	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-)
+	"unicode"
 
-/*
-	Miscellaneous subroutines
-*/
+	"github.com/mozillazg/go-unidecode"
+	"golang.org/x/text/unicode/norm"
+)
 
 // From: https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang
 func durationToString(d time.Duration) string {
@@ -19,6 +25,28 @@ func durationToString(d time.Duration) string {
 	d -= m * time.Minute
 	s := d / time.Second
 	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
+func executeScript(script string) error {
+	cmd := exec.Command(path.Join(projectPath, script)) // nolint:gosec
+	cmd.Dir = projectPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// The "cmd.CombinedOutput()" function will throw an error if the return code is not equal
+		// to 0
+		logger.Error("Failed to execute \""+script+"\":", err)
+		if string(output) != "" {
+			logger.Error("Output is as follows:")
+			logger.Error(string(output))
+		}
+		return err
+	}
+	logger.Info("\"" + script + "\" completed.")
+	if string(output) != "" {
+		logger.Info("Output is as follows:")
+		logger.Info(string(output))
+	}
+	return nil
 }
 
 func formatTimestampUnix(datetime time.Time) string {
@@ -40,6 +68,29 @@ func getRandom(min int, max int) int {
 	return rand.Intn(max-min) + min
 }
 
+// getVersion will get the current version of the JavaScript client,
+// which is contained in the "version.json" file
+// We want to read this file every time (as opposed to just reading it on server start) so that we
+// can update the client without having to restart the entire server
+func getVersion() int {
+	var fileContents []byte
+	if v, err := ioutil.ReadFile(versionPath); err != nil {
+		logger.Error("Failed to read the \""+versionPath+"\" file:", err)
+		return 0
+	} else {
+		fileContents = v
+	}
+	versionString := string(fileContents)
+	versionString = strings.TrimSpace(versionString)
+	if v, err := strconv.Atoi(versionString); err != nil {
+		logger.Error("Failed to convert \""+versionString+"\" "+
+			"(the contents of the \"version.json\" file) to a number:", err)
+		return 0
+	} else {
+		return v
+	}
+}
+
 func intInSlice(a int, slice []int) bool {
 	for _, b := range slice {
 		if b == a {
@@ -49,9 +100,19 @@ func intInSlice(a int, slice []int) bool {
 	return false
 }
 
-// From: https://stackoverflow.com/questions/38554353/
+// From: https://stackoverflow.com/questions/53069040/checking-a-string-contains-only-ascii-characters
+func isPrintableASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 32 || s[i] > 126 { // 32 is " " and 126 is "~"
+			return false
+		}
+	}
+	return true
+}
+
+// From: https://stackoverflow.com/questions/38554353/how-to-check-if-a-string-only-contains-alphabetic-characters-in-go
 var isAlphanumeric = regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString
-var isAlphanumericSpacesSafeSpecialCharacters = regexp.MustCompile(`^[a-zA-Z0-9 !-]+$`).MatchString
+var isAlphanumericSpacesSafeSpecialCharacters = regexp.MustCompile(`^[a-zA-Z0-9 !@#$\-_=\+;:'",\.\?]+$`).MatchString
 
 // From: https://gist.github.com/stoewer/fbe273b711e6a06315d19552dd4d33e6
 var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
@@ -65,10 +126,42 @@ func max(x, y int) int {
 	return y
 }
 
-func secondsToDurationString(str string) (string, error) {
+func normalizeUsername(username string) string {
+	// First, we transliterate the username to pure ASCII
+	// Second, we lowercase it
+	return strings.ToLower(unidecode.Unidecode(username))
+}
+
+func numConsecutiveDiacritics(s string) int {
+	// First, normalize with Normalization Form Canonical Decomposition (NFD) so that diacritics
+	// are seprated from other characters
+	// https://en.wikipedia.org/wiki/Unicode_equivalence
+	// https://blog.golang.org/normalization
+	normalizedString := norm.NFD.String(s)
+
+	consecutiveDiacriticCount := 0
+	maxConsecutive := 0
+	for _, r := range normalizedString {
+		// "Mn" stands for nonspacing mark, e.g. a diacritic
+		// https://www.compart.com/en/unicode/category/Mn
+		// From: https://stackoverflow.com/questions/26722450/remove-diacritics-using-go
+		if unicode.Is(unicode.Mn, r) {
+			consecutiveDiacriticCount++
+			if consecutiveDiacriticCount > maxConsecutive {
+				maxConsecutive = consecutiveDiacriticCount
+			}
+		} else {
+			consecutiveDiacriticCount = 0
+		}
+	}
+
+	return maxConsecutive
+}
+
+func secondsToDurationString(seconds int) (string, error) {
 	// The s is for seconds
 	var duration time.Duration
-	if v, err := time.ParseDuration(str + "s"); err != nil {
+	if v, err := time.ParseDuration(strconv.Itoa(seconds) + "s"); err != nil {
 		return "", err
 	} else {
 		duration = v

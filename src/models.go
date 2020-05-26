@@ -1,15 +1,15 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"os"
+	"strings"
 
-	// This is the documented way to use the driver
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var (
-	db     *sql.DB
+	db     *pgxpool.Pool
 	dbName string
 )
 
@@ -18,14 +18,16 @@ type Models struct {
 	BannedIPs
 	ChatLog
 	ChatLogPM
-	DiscordMetadata
 	DiscordWaiters
 	GameActions
 	GameParticipantNotes
 	GameParticipants
 	Games
+	Metadata
 	MutedIPs
 	Users
+	UserFriends
+	UserReverseFriends
 	UserSettings
 	UserStats
 	VariantStats
@@ -41,8 +43,7 @@ func modelsInit() (*Models, error) {
 	}
 	dbPort := os.Getenv("DB_PORT")
 	if len(dbPort) == 0 {
-		// 3306 is the default port for MariaDB
-		dbPort = "3306"
+		dbPort = "5432" // This is the default port for PostgreSQL
 	}
 	dbUser := os.Getenv("DB_USER")
 	if len(dbUser) == 0 {
@@ -61,10 +62,21 @@ func modelsInit() (*Models, error) {
 	}
 
 	// Initialize the database
-	// We need to set parseTime to true so that we can scan DATETIME fields into time.Time variables
-	// See: https://github.com/go-sql-driver/mysql
-	dsn := dbUser + ":" + dbPass + "@(" + dbHost + ":" + dbPort + ")/" + dbName + "?parseTime=true"
-	if v, err := sql.Open("mysql", dsn); err != nil {
+	// The DSN string format is documented at:
+	// https://godoc.org/github.com/jackc/pgconn#ParseConfig
+	dsnArray := []string{
+		"host=" + dbHost,
+		"port=" + dbPort,
+		"user=" + dbUser,
+		"password=" + dbPass,
+		"dbname=" + dbName,
+	}
+	dsn := strings.Join(dsnArray, " ")
+
+	// We use "pgxpool.Connect()" instead of "pgx.Connect()" because the vanilla driver is not safe
+	// for concurrent connections (unlike the other Golang SQL drivers)
+	// https://github.com/jackc/pgx/wiki/Getting-started-with-pgx
+	if v, err := pgxpool.Connect(context.Background(), dsn); err != nil {
 		return nil, err
 	} else {
 		db = v
@@ -76,7 +88,5 @@ func modelsInit() (*Models, error) {
 
 // Close exposes the ability to close the underlying database connection
 func (*Models) Close() {
-	if err := db.Close(); err != nil {
-		logger.Fatal("Failed to close the database connection:", err)
-	}
+	db.Close()
 }

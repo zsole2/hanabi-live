@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+var (
+	newTableID = 0 // We increment the ID for every table created
+)
+
 type Table struct {
 	ID   int
 	Name string
@@ -13,14 +17,15 @@ type Table struct {
 	Spectators []*Spectator
 	// We also keep track of spectators who have disconnected
 	// so that we can automatically put them back into the shared replay
-	DisconSpectators map[int]bool
+	DisconSpectators map[int]struct{}
 
 	// This is the user ID of the person who started the table
 	// or the current leader of the shared replay
 	Owner   int
 	Visible bool // Whether or not this table is shown to other users
-	// This is a salted SHA512 hash sent by the client, but technically it can be any string at all
-	Password string
+	// This is an Argon2id hash generated from the plain-text password
+	// that the table creator sends us
+	PasswordHash string
 	// Whether or not the table was created with the "Alert people" checkbox checked
 	AlertWaiters   bool
 	Running        bool
@@ -57,8 +62,22 @@ type TableChatMessage struct {
 
 func NewTable(name string, owner int) *Table {
 	// Get a new table ID
+	for {
+		newTableID++
+
+		// Ensure that the table ID does not conflict with any existing tables
+		valid := true
+		for _, t := range tables {
+			if t.ID == newTableID {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			break
+		}
+	}
 	tableID := newTableID
-	newTableID++
 
 	// Create the table object
 	return &Table{
@@ -67,7 +86,7 @@ func NewTable(name string, owner int) *Table {
 
 		Players:          make([]*Player, 0),
 		Spectators:       make([]*Spectator, 0),
-		DisconSpectators: make(map[int]bool),
+		DisconSpectators: make(map[int]struct{}),
 
 		Owner:   owner,
 		Visible: true, // Tables are visible by default
@@ -80,10 +99,6 @@ func NewTable(name string, owner int) *Table {
 		ChatRead: make(map[int]int),
 	}
 }
-
-/*
-	Major functions
-*/
 
 // CheckIdle is meant to be called in a new goroutine
 func (t *Table) CheckIdle() {
@@ -123,11 +138,12 @@ func (t *Table) CheckIdle() {
 			// A spectator's session should never be nil
 			// They might be in the process of reconnecting,
 			// so make a fake session that will represent them
-			s = newFakeSession(sp.ID, sp.Name, t.ID)
+			s = newFakeSession(sp.ID, sp.Name)
+			logger.Info("Created a new fake session in the \"CheckIdle()\" function.")
 		}
-		s.Set("currentTable", t.ID)
-		s.Set("status", statusSpectating)
-		commandTableUnattend(s, nil)
+		commandTableUnattend(s, &CommandData{
+			TableID: t.ID,
+		})
 	}
 
 	if t.Replay {
@@ -136,47 +152,24 @@ func (t *Table) CheckIdle() {
 		return
 	}
 
-	// Get the session of the owner
-	var s *Session
-	for _, p := range t.Players {
-		if p.ID == t.Owner {
-			s = p.Session
-			if s == nil {
-				// A player's session should never be nil
-				// They might be in the process of reconnecting,
-				// so make a fake session that will represent them
-				s = newFakeSession(p.ID, p.Name, t.ID)
-			}
-			break
-		}
-	}
-	if s == nil {
-		logger.Error("Failed to find the owner in the players slice in the " +
-			"\"CheckIdle()\" function.")
-		return
-	}
-
+	s := t.GetOwnerSession()
 	if t.Running {
 		// We need to end a game that has started
 		// (this will put everyone in a non-shared replay of the idle game)
-		s.Set("currentTable", t.ID)
-		s.Set("status", statusPlaying)
 		commandAction(s, &CommandData{
-			Type: actionTypeIdleLimitReached,
+			TableID: t.ID,
+			Type:    ActionTypeGameOver,
+			Value:   EndConditionIdleTimeout,
 		})
 	} else {
 		// We need to end a game that hasn't started yet
 		// Force the owner to leave, which should subsequently eject everyone else
 		// (this will send everyone back to the main lobby screen)
-		s.Set("currentTable", t.ID)
-		s.Set("status", statusPregame)
-		commandTableLeave(s, nil)
+		commandTableLeave(s, &CommandData{
+			TableID: t.ID,
+		})
 	}
 }
-
-/*
-	Miscellaneous functions
-*/
 
 func (t *Table) GetName() string {
 	g := t.Game
@@ -206,4 +199,34 @@ func (t *Table) GetSpectatorIndexFromID(id int) int {
 		}
 	}
 	return -1
+}
+
+func (t *Table) GetOwnerSession() *Session {
+	if t.Replay {
+		logger.Error("The \"GetOwnerSession\" function was called on a table that is a replay.")
+		return nil
+	}
+
+	var s *Session
+	for _, p := range t.Players {
+		if p.ID == t.Owner {
+			s = p.Session
+			if s == nil {
+				// A player's session should never be nil
+				// They might be in the process of reconnecting,
+				// so make a fake session that will represent them
+				s = newFakeSession(p.ID, p.Name)
+				logger.Info("Created a new fake session in the \"GetOwnerSession()\" function.")
+			}
+			break
+		}
+	}
+
+	if s == nil {
+		logger.Error("Failed to find the owner for table " + strconv.Itoa(t.ID) + ".")
+		s = newFakeSession(-1, "Unknown")
+		logger.Info("Created a new fake session in the \"GetOwnerSession()\" function.")
+	}
+
+	return s
 }

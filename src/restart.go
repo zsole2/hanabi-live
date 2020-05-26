@@ -1,117 +1,127 @@
 package main
 
 import (
-	"os/exec"
+	"encoding/json"
+	"io/ioutil"
 	"path"
+	"runtime"
 	"strconv"
-	"time"
 )
 
-func shutdown(restart bool) {
-	var verb string
-	if restart {
-		verb = "restart"
-	} else {
-		verb = "shutdown"
+// We want to record all of the ongoing games to a flat file on the disk
+// This allows the server to restart without waiting for ongoing games to finish
+func restart() {
+	// We build the client and the server first before kicking everyone off in order to reduce the
+	// total amount of downtime (but executing Bash scripts will not work on Windows)
+	if runtime.GOOS != "windows" {
+		logger.Info("Building the client...")
+		if err := executeScript("build_client.sh"); err != nil {
+			logger.Error("Failed to execute the \"build_client.sh\" script:", err)
+			return
+		}
+
+		logger.Info("Building the server...")
+		if err := executeScript("build_server.sh"); err != nil {
+			logger.Error("Failed to execute the \"build_server.sh\" script:", err)
+			return
+		}
 	}
-	logger.Info("Initiating a server " + verb + ".")
+
+	// Lock the command mutex to prevent any more moves from being submitted
+	commandMutex.Lock()
+	defer commandMutex.Unlock()
+
+	logger.Info("Serializing the tables and writing all tables to disk...")
+	if !serializeTables() {
+		return
+	}
 
 	for _, s := range sessions {
-		if restart {
-			s.Error("The server is going down for a scheduled restart. " +
-				"Please wait a few seconds and then refresh the page.")
-		} else {
-			s.Error("The server is going down for scheduled maintenance. The server might be " +
-				"down for a while; please see the Discord server for more specific updates.")
-		}
+		s.Error("The server is going down momentarily to load a new version of the code. " +
+			"If you are currently playing a game, all of the progress should be saved. " +
+			"Please wait a few seconds and then refresh the page.")
 	}
 
-	if restart {
-		execute("build_client.sh", projectPath)
-		execute("restart.sh", projectPath)
+	commandChat(nil, &CommandData{
+		Msg:    "The server went down for a restart at: " + getCurrentTimestamp(),
+		Room:   "lobby",
+		Server: true,
+	})
+
+	logger.Info("Finished writing all tables to disk.")
+	if runtime.GOOS != "windows" {
+		logger.Info("Restarting...")
+		if err := executeScript("restart_service_only.sh"); err != nil {
+			logger.Error("Failed to execute the \"restart_service_only.sh\" script:", err)
+			return
+		}
 	} else {
-		commandChat(nil, &CommandData{
-			Msg:    "The server successfully shut down at: " + getCurrentTimestamp(),
-			Room:   "lobby",
-			Server: true,
-			Spam:   true,
-		})
-		execute("stop.sh", projectPath)
+		logger.Info("Manually kill the server now.")
 	}
+
+	// Block until the process is killed so that no more moves can be submitted
+	select {}
 }
 
-func graceful(restart bool) {
-	var verb string
-	if restart {
-		verb = "restart"
-	} else {
-		verb = "shutdown"
-	}
-
-	numGames := countActiveTables()
-	logger.Info("Initiating a graceful server " + verb + " " +
-		"(with " + strconv.Itoa(numGames) + " active games).")
-	if numGames == 0 {
-		shutdown(restart)
-	} else {
-		// Notify the lobby and all ongoing tables
-		shuttingDown = true
-		notifyAllShutdown()
-		chatServerSendAll("The server will " + verb + " when all ongoing games have finished. " +
-			"New game creation has been disabled.")
-
-		go gracefulWait(restart)
-	}
-}
-
-func gracefulWait(restart bool) {
-	for {
-		if !shuttingDown {
-			logger.Info("The shutdown was aborted.")
-			break
-		}
-
-		if countActiveTables() == 0 {
-			// Wait 10 seconds so that the players are not immediately booted upon finishing
-			time.Sleep(time.Second * 10)
-
-			if restart {
-				logger.Info("Restarting now.")
-			} else {
-				logger.Info("Shutting down now.")
-			}
-			shutdown(restart)
-			break
-		}
-
-		time.Sleep(time.Second)
-	}
-}
-
-func countActiveTables() int {
-	numTables := 0
+func serializeTables() bool {
 	for _, t := range tables {
-		if !t.Running || // Pre-game tables that have not started yet
-			t.Replay { // Solo replays and shared replays
+		logger.Info("Serializing table:", t.ID)
 
+		// Only serialize ongoing games
+		if !t.Running || t.Replay {
+			logger.Info("Skipping due to it being unstarted or a replay.")
 			continue
 		}
-		numTables++
-	}
 
-	return numTables
-}
-
-func execute(script string, cwd string) {
-	cmd := exec.Command(path.Join(cwd, script)) // nolint:gosec
-	cmd.Dir = cwd
-	if output, err := cmd.CombinedOutput(); err != nil {
-		logger.Error("Failed to execute \""+script+"\":", err)
-		if string(output) != "" {
-			logger.Error("Output is as follows:")
-			logger.Error(string(output))
+		// Force all of the spectators to leave, if any
+		for _, sp := range t.Spectators {
+			s := sp.Session
+			if s == nil {
+				// A spectator's session should never be nil
+				// They might be in the process of reconnecting,
+				// so make a fake session that will represent them
+				s = newFakeSession(sp.ID, sp.Name)
+				logger.Info("Created a new fake session in the \"serializeTables()\" function.")
+			} else {
+				// Boot them from the game
+				s.Emit("boot", nil)
+			}
+			commandTableUnattend(s, &CommandData{
+				TableID: t.ID,
+			})
 		}
-	} else {
-		logger.Info("\""+script+"\" completed:", string(output))
+		if len(t.Spectators) > 0 {
+			t.Spectators = make([]*Spectator, 0)
+		}
+		if len(t.DisconSpectators) > 0 {
+			t.DisconSpectators = make(map[int]struct{})
+		}
+
+		// Set all the player sessions to nil, since it is not necessary to serialize those
+		for _, p := range t.Players {
+			p.Session = nil
+			p.Present = false
+		}
+
+		// "t.Game.Table" and "t.Game.Options" are circular references;
+		// we do not have to unset them because we have specified `json:"-"` on their fields,
+		// so the JSON encoder will ignore them
+
+		var tableJSON []byte
+		if v, err := json.Marshal(t); err != nil {
+			logger.Error("Failed to marshal table "+strconv.Itoa(t.ID)+":", err)
+			return false
+		} else {
+			tableJSON = v
+		}
+
+		tablePath := path.Join(tablesPath, strconv.Itoa(t.ID)+".json")
+		if err := ioutil.WriteFile(tablePath, tableJSON, 0600); err != nil {
+			logger.Error("Failed to write the table "+strconv.Itoa(t.ID)+" to "+
+				"\""+tablePath+"\":", err)
+			return false
+		}
 	}
+
+	return true
 }

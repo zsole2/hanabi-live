@@ -1,6 +1,4 @@
-/*
-    We want to redraw the stage if the user resizes their browser window
-*/
+// We want to redraw the stage if the user resizes their browser window
 
 // This below code block deals with automatic resizing
 // (this is commented out because it is currently broken)
@@ -60,8 +58,8 @@ const redraw = () => {
         for (let i = 0; i < globals.replayLog.length; i++) {
             msg = globals.replayLog[i];
 
-            // Rebuild all notifies; this will correctly position cards and text
-            notify(msg);
+            // Re-process all game actions; this will correctly position cards and text
+            action(msg);
 
             // Correctly record and handle whose turn it is
             if (msg.type === 'turn') {

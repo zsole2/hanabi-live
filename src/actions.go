@@ -1,9 +1,7 @@
-package main
+// Actions represent a change in the game state
+// Different actions will have different fields
 
-/*
-	Actions represent a change in the game state
-	Different actions will have different fields
-*/
+package main
 
 type ActionDraw struct {
 	Type  string `json:"type"`
@@ -34,7 +32,7 @@ type ActionTurn struct {
 }
 type ActionClue struct {
 	Type   string `json:"type"`
-	Clue   Clue   `json:"clue"` // Defined in "command.go"
+	Clue   Clue   `json:"clue"`
 	Giver  int    `json:"giver"`
 	List   []int  `json:"list"` // The list of cards that the clue "touches"
 	Target int    `json:"target"`
@@ -71,6 +69,10 @@ type Which struct { // Used by "ActionPlay" and "ActionDiscard"
 	Rank  int `json:"rank"`
 	Order int `json:"order"` // The ID of the card (based on its order in the deck)
 }
+type Clue struct {
+	Type  int `json:"type"`
+	Value int `json:"value"`
+}
 type SimpleCard struct { // Used by "ActionDeckOrder"
 	Suit int `json:"suit"`
 	Rank int `json:"rank"`
@@ -106,5 +108,15 @@ func (a *ActionDraw) Scrub(t *Table, userID int) {
 
 		a.Rank = -1
 		a.Suit = -1
+	}
+}
+
+func NewClue(d *CommandData) Clue {
+	return Clue{
+		// A color clue is action type 2
+		// A rank clue is action type 3
+		// Remap these to 0 and 1, respectively
+		Type:  d.Type - 2,
+		Value: d.Value,
 	}
 }

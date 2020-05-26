@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth_gin"
@@ -17,20 +18,22 @@ import (
 )
 
 type TemplateData struct {
-	Title  string // Used to populate the <title> tag
-	Domain string // Used to validate that the user is going to the correct URL
-	Name   string // Used for the profile
+	Title     string // Used to populate the <title> tag
+	Domain    string // Used to validate that the user is going to the correct URL
+	Version   int
+	Compiling bool // True if we are currently recompiling the TypeScript client
+	Dev       bool
+	Name      string // Used for the profile
 }
 
 const (
 	// The name supplied to the Gin session middleware can be any arbitrary string
-	httpSessionName = "hanabi.sid"
-	// The most secure value is 1 second, but we instead use 2 seconds to accommodate
-	// clients that round cookies to the nearest whole second (e.g. Java)
-	httpSessionTimeout = 2
+	HTTPSessionName    = "hanabi.sid"
+	HTTPSessionTimeout = 60 * 60 * 24 * 365 // 1 year in seconds
 )
 
 var (
+	domain       string
 	GATrackingID string
 )
 
@@ -97,13 +100,16 @@ func httpInit() {
 		// After getting a cookie via "/login", the client will immediately
 		// establish a WebSocket connection via "/ws", so the cookie only needs
 		// to exist for that time frame
-		MaxAge: httpSessionTimeout, // In seconds
+		MaxAge: HTTPSessionTimeout, // In seconds
 		// Only send the cookie over HTTPS:
 		// https://www.owasp.org/index.php/Testing_for_cookies_attributes_(OTG-SESS-002)
 		Secure: true,
 		// Mitigate XSS attacks:
 		// https://www.owasp.org/index.php/HttpOnly
 		HttpOnly: true,
+		// Mitigate CSRF attacks:
+		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#SameSite_cookies
+		SameSite: http.SameSiteStrictMode,
 	}
 	if !useTLS {
 		options.Secure = false
@@ -111,15 +117,17 @@ func httpInit() {
 	httpSessionStore.Options(options)
 
 	// Attach the sessions middleware
-	httpRouter.Use(gsessions.Sessions(httpSessionName, httpSessionStore))
+	httpRouter.Use(gsessions.Sessions(HTTPSessionName, httpSessionStore))
 
 	// Initialize Google Analytics
 	if len(GATrackingID) > 0 {
 		httpRouter.Use(httpGoogleAnalytics) // Attach the Google Analytics middleware
 	}
 
-	// Path handlers (for the WebSocket server)
+	// Path handlers (for cookies and logging in)
 	httpRouter.POST("/login", httpLogin)
+	httpRouter.GET("/logout", httpLogout)
+	httpRouter.GET("/test-cookie", httpTestCookie)
 	httpRouter.GET("/ws", httpWS)
 
 	// Path handlers (for the main website)
@@ -127,18 +135,24 @@ func httpInit() {
 	httpRouter.GET("/replay", httpMain)
 	httpRouter.GET("/replay/:gameID", httpMain)
 	httpRouter.GET("/replay/:gameID/:turn", httpMain)
+	httpRouter.GET("/shared-replay", httpMain)
+	httpRouter.GET("/shared-replay/:gameID", httpMain)
+	httpRouter.GET("/shared-replay/:gameID/:turn", httpMain)
 	httpRouter.GET("/test", httpMain)
 	httpRouter.GET("/test/:testNum", httpMain)
-	httpRouter.GET("/dev2", httpMain) // Used for testing Phaser
 
 	// Path handlers (for development)
 	// ("/dev" is the same as "/" but uses unbundled JavaScript/CSS)
-	httpRouter.GET("/dev", httpDev)
-	httpRouter.GET("/dev/replay", httpDev)
-	httpRouter.GET("/dev/replay/:gameID", httpDev)
-	httpRouter.GET("/dev/replay/:gameID/:turn", httpDev)
-	httpRouter.GET("/dev/test", httpDev)
-	httpRouter.GET("/dev/test/:testNum", httpDev)
+	httpRouter.GET("/dev", httpMain)
+	httpRouter.GET("/dev/replay", httpMain)
+	httpRouter.GET("/dev/replay/:gameID", httpMain)
+	httpRouter.GET("/dev/replay/:gameID/:turn", httpMain)
+	httpRouter.GET("/dev/shared-replay", httpMain)
+	httpRouter.GET("/dev/shared-replay/:gameID", httpMain)
+	httpRouter.GET("/dev/shared-replay/:gameID/:turn", httpMain)
+	httpRouter.GET("/dev/test", httpMain)
+	httpRouter.GET("/dev/test/:testNum", httpMain)
+	httpRouter.GET("/dev2", httpMain) // Used for testing the new Phaser client
 
 	// Path handlers for other URLs
 	httpRouter.GET("/scores", httpScores)
@@ -152,8 +166,14 @@ func httpInit() {
 	httpRouter.GET("/stats", httpStats)
 	httpRouter.GET("/variant/:id", httpVariant)
 	httpRouter.GET("/videos", httpVideos)
+	httpRouter.GET("/password-reset", httpPasswordReset)
+	httpRouter.POST("/password-reset", httpPasswordResetPost)
+
+	// Path handlers for bots, developers, researchers, etc.
 	httpRouter.GET("/export", httpExport)
 	httpRouter.GET("/export/:game", httpExport)
+	httpRouter.GET("/deals", httpDeals)
+	httpRouter.GET("/deals/:seed", httpDeals)
 
 	// Other
 	httpRouter.Static("/public", path.Join(projectPath, "public"))
@@ -182,40 +202,46 @@ func httpInit() {
 			}),
 		)
 
-		// ListenAndServe is blocking, so start listening on a new goroutine
+		// ListenAndServe is blocking, so we need to start listening in a new goroutine
 		go func() {
-			// Nothing before the colon implies 0.0.0.0
-			if err := http.ListenAndServe(":80", HTTPServeMux); err != nil {
-				logger.Fatal("http.ListenAndServe failed to start on 80.")
+			// We need to create a new http.Server because the default one has no timeouts
+			// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
+			HTTPRedirectServerWithTimeout := &http.Server{
+				Addr:         "0.0.0.0:80", // Listen on all IP addresses
+				Handler:      HTTPServeMux,
+				ReadTimeout:  5 * time.Second,
+				WriteTimeout: 10 * time.Second,
+			}
+			if err := HTTPRedirectServerWithTimeout.ListenAndServe(); err != nil {
+				logger.Fatal("ListenAndServe failed to start on port 80.")
 				return
 			}
-			logger.Fatal("http.ListenAndServe ended for port 80.")
+			logger.Fatal("ListenAndServe ended for port 80.")
 		}()
 	}
 
 	// Start listening and serving requests (which is blocking)
+	// We need to create a new http.Server because the default one has no timeouts
+	// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
 	logger.Info("Listening on port " + strconv.Itoa(port) + ".")
+	HTTPServerWithTimeout := &http.Server{
+		Addr:         "0.0.0.0:" + strconv.Itoa(port), // Listen on all IP addresses
+		Handler:      httpRouter,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	if useTLS {
-		if err := http.ListenAndServeTLS(
-			":"+strconv.Itoa(port), // Nothing before the colon implies 0.0.0.0
-			tlsCertFile,
-			tlsKeyFile,
-			httpRouter,
-		); err != nil {
-			logger.Fatal("http.ListenAndServeTLS failed:", err)
+		if err := HTTPServerWithTimeout.ListenAndServeTLS(tlsCertFile, tlsKeyFile); err != nil {
+			logger.Fatal("ListenAndServeTLS failed:", err)
 			return
 		}
-		logger.Fatal("http.ListenAndServeTLS ended prematurely.")
+		logger.Fatal("ListenAndServeTLS ended prematurely.")
 	} else {
-		// Listen and serve (HTTP)
-		if err := http.ListenAndServe(
-			":"+strconv.Itoa(port), // Nothing before the colon implies 0.0.0.0
-			httpRouter,
-		); err != nil {
-			logger.Fatal("http.ListenAndServe failed:", err)
+		if err := HTTPServerWithTimeout.ListenAndServe(); err != nil {
+			logger.Fatal("ListenAndServe failed:", err)
 			return
 		}
-		logger.Fatal("http.ListenAndServe ended prematurely.")
+		logger.Fatal("ListenAndServe ended prematurely.")
 	}
 }
 
@@ -254,8 +280,8 @@ func httpServeTemplate(w http.ResponseWriter, data interface{}, templateName ...
 	templateName = append(templateName, layoutPath)
 
 	// Create the template
-	tmpl, err := template.ParseFiles(templateName...)
-	if err != nil {
+	var tmpl *template.Template
+	if v, err := template.ParseFiles(templateName...); err != nil {
 		logger.Error("Failed to create the template:", err.Error())
 		http.Error(
 			w,
@@ -263,6 +289,8 @@ func httpServeTemplate(w http.ResponseWriter, data interface{}, templateName ...
 			http.StatusInternalServerError,
 		)
 		return
+	} else {
+		tmpl = v
 	}
 
 	// Execute the template and send it to the user
@@ -271,7 +299,8 @@ func httpServeTemplate(w http.ResponseWriter, data interface{}, templateName ...
 			strings.HasSuffix(err.Error(), "http2: stream closed") ||
 			strings.HasSuffix(err.Error(), "write: broken pipe") ||
 			strings.HasSuffix(err.Error(), "write: connection reset by peer") ||
-			strings.HasSuffix(err.Error(), "write: connection timed out") {
+			strings.HasSuffix(err.Error(), "write: connection timed out") ||
+			strings.HasSuffix(err.Error(), "i/o timeout") {
 
 			// Some errors are common and expected
 			// (e.g. the user presses the "Stop" button while the template is executing)

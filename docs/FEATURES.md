@@ -1,6 +1,21 @@
 # List of Features
 
-[Hanabi Live](https://hanabi.live/) was released on October 2017 as an attempt to improve upon Keldon's [Keldon's Hanabi server](http://keldon.net/hanabi/) (which is now non-functional). Much of the client code was originally borrowed from his implementation. Nearly all of the server code was written by Zamiel. Several community members have contributed to the project.
+[Hanabi Live](https://hanabi.live/) was released on October 2017 as an attempt to improve upon [Keldon Jones'](http://keldon.net/) Hanabi site (which is now deleted). Much of the client code was originally borrowed from his implementation. Nearly all of the server code was written by Zamiel. Several community members have contributed to the project.
+
+<br />
+
+## Table of Contents
+
+1. [Basic How-To](#basic-how-to)
+2. [Major Features](#major-features)
+3. [Custom Game Options](#custom-game-options)
+4. [Other Options](#other-options)
+5. [Sounds](#sounds)
+6. [Keyboard Shortcuts](#keyboard-shortcuts)
+7. [Similar Deals and Competitive Play](#similar-deals-and-competitive-play)
+8. [Chat](#chat)
+9. [Friends](#friends)
+10. [Research & Bots](#research--bots)
 
 <br />
 
@@ -35,29 +50,38 @@
 
 #### Clue Indication
 
-* The cards last touched by a clue are indicated by arrows. A circle on the arrow shows the type of clue that was given.
-* Orange borders around a card signify that it has been "touched" by one or more clues.
-* The game will keep track of the clues that accumulate on your cards, "filling them in" for you.
-* You can left-click on someone else's card to see how it appears to them. (This is referred to as "Empathy".)
+* Arrows indicate the cards that are touched by a clue.
+  * A circle on the arrow shows the type of clue that was given.
+  * Arrows with a white border indicate that they are touching a "brand new" card (e.g. a card that has not been touched by any positive clues yet).
+  * Arrows with a gray border indicate that they are re-touching a card that has been previously touched by one or more positive clues.
+* Black borders around a card signify that it has been "touched" by one or more positive clues.
+* The game will keep track of the clues that accumulate on cards, "filling them in" when appropriate.
+* You can hold down the left mouse button on someone else's hand to see how it appears to them. (This is referred to as "empathy".)
 
 #### Pips
 
-* Color pips (that match the suits of the stack) and black boxes (that match the number possibilities) will appear on cards in a player's hand.
+* Suit pips (that represent the possible suits) and black boxes (that represent the possible ranks) will appear on cards in a player's hand.
 * The pips and boxes will automatically disappear as positive clues and negative clues "touch" the card.
 * The pips and boxes will automatically be crossed out if all the particular cards for that suit/rank are visible.
 
 #### Clue Log
 
-* A clue log is also shown in the top-right-hand corner.
-* When mousing over a card, the positive clues that have touched the card will turn white and the negative clues that have touched the card will turn red.
+* A clue log is shown in the top-right-hand corner.
+* When the cursor is hovering over a card, the positive clues that have touched the card will turn white and the negative clues that have touched the card will turn red.
 * You can click on an entry in the clue log to go to the turn when the clue was given.
 
 #### Notes
 
 * Players can right-click on any card to add a note to it. Afterward, by hovering over a card, a tooltip will appear with the written note.
 * This is useful for storing contextual information about a card for later.
-* Notes can also be written inside of an in-game replay as a way to track the card as it moves throughout your hand.
-* If the note matches the name of a card (e.g. "red 1", "r1", etc.), the card face will change to match. (The card face will automatically be deactivated if a clue is received that falsifies the note.)
+* Notes can also be written during an in-game replay as a way to track the card as it moves throughout your hand.
+* If the note matches the name of a card (e.g. "red 1", "r1", etc.), the card face will change to match. (The card face will automatically be deactivated if a clue is received that falsifies the note.) If this is undesired, append a question mark to the end of your note (e.g. "r1?").
+  * Black is abbreviated as "k".
+  * Rainbow, muddy rainbow, and cocoa rainbow are abbreviated as "m".
+  * Pink, light pink, and gray pink are abbreviated as "i".
+  * Brown is abbreviated as "n".
+  * The "dark" suits are abbreviated the same as their normal counterparts.
+  * Gray is abbreviated as "a".
 * Since notes are tracked by the server, players can switch computers mid-game and keep any notes written.
 * Notes are saved in the database and will persist into the replay.
 * Everyone's notes are combined and shown to spectators, which is fun to see.
@@ -73,7 +97,7 @@
 
 #### Spectators
 
-* All games have the ability to be spectated by other idle players.
+* All games have the ability to be spectated by others.
 * Spectators will see all of the hands.
 * The list of current spectators can be seen by hovering over the "👀" icon in the bottom-right-hand corner.
 * Spectators can right-click on a player's name to view the game from their perspective.
@@ -84,8 +108,7 @@
 * Using this feature, players can go back in time to see the exact game state at a specific turn.
 * There are some helpful shortcuts for going to a specific turn:
   * You can Alt + click on a card to go to the turn it was drawn.
-  * You can Alt + middle-click on a card to go to the turn it was first positively clued.
-  * You can middle-click on a card go to the previous turn it was positively clued.
+  * You can middle-click on a card go to the turn it was first positively clued.
   * You can click on a card in the play stacks to go to the turn before the card was played.
   * You can click on a card in the discard pile to go to the turn before the card was discarded.
   * You can click on an entry in the clue log to go to the turn when the clue was given.
@@ -108,10 +131,18 @@
 * A shared replay is similar to a normal replay, but others can join to have a coordinated review session.
 * At the end of each game, you will automatically be put into a shared replay with everyone who played the game.
 * The leader controls what turn is being shown. By default, the leader will be the person who created the game or created the shared replay.
+* Players can "break free" of what the leader is showing by clicking the "Pause Shared Turns" button, or by manually navigating to a different turn. To resyncronize with the team, they need to click on the "Use Shared Turns Button". (The up arrow and down arrow are also shortcuts for clicking on this button.)
 * The leader can right-click on a card to highlight it with a red arrow (to point out things to the other players).
-* The leader can Ctrl + Shift + Alt + right-click on a card to morph it into an arbitrary card.
 * The current leader can be seen by hovering over the "👑" icon in the bottom right-hand corner.
-* The leader role can be transfered by right-clicking on a player's name or by right-clicking the crown.
+* The leader role can be transfered by right-clicking the crown.
+
+#### Hypotheticals
+
+* In a shared replay, the leader has the option to begin a hypothetical.
+* In a hypothetical, the leader can perform actions for all of the players, playing the game forward for as long as desired.
+* Hypotheticals are useful to show what would happen if a player decided to do a different move than they really did in the game.
+* When a hypothetical is active, other players cannot "break free" or return to previous turns.
+* The leader can Alt + right-click on a card to morph it into an arbitrary card. This can be useful for showing how players have to account for different kinds of situations or to create specific game states.
 
 #### Game Statistics
 
@@ -151,7 +182,7 @@
 
 #### Speedruns
 
-* Each game has the option to be created as a speedrun. Speedruns are where players attempt to beat the game as fast as possible (as a special challenge). The best speedrun times are tracked on the [Speedrun.com leaderboards](https://www.speedrun.com/hanabi).
+* Each game has the option to be created as a speedrun. In speedruns, players attempt to beat the game as fast as possible (as a special challenge). The best speedrun times are tracked on the [Speedrun.com leaderboards](https://www.speedrun.com/hanabi).
 * In a speedrun, the controls work differently and are optimized for faster play:
   * Left-clicking on a card in your hand will play it.
   * Right-clicking on a card in your hand hand will discard it.
@@ -191,7 +222,6 @@
 
 * Each game has the option to be created with a password.
 * This allows private tables to be created.
-* Note that all passwords are [salted](https://en.wikipedia.org/wiki/Salt_(cryptography)) and [hashed](https://en.wikipedia.org/wiki/Cryptographic_hash_function) (with [SHA256](https://en.wikipedia.org/wiki/SHA-2)) before being sent to the server.
 
 <br />
 
@@ -252,14 +282,18 @@ If you are playing with the <a href="https://github.com/Zamiell/hanabi-conventio
 ## Keyboard Shortcuts
 
 * In the lobby:
+  * Join the first game: `Alt + j`
   * Create a table: `Alt + c`
   * Show history: `Alt + h`
+  * Watch a specific replay: `Alt + a`
+  * Sign out: `Alt + o`
+* In a pre-game:
   * Start a game: `Alt + s`
-  * Leave a table: `Alt + l`
-  * Return to tables: `Alt + r`
+  * Return to the lobby: `Alt + r` or `Escape`
+  * Leave the game: `Alt + l`
 * In a game:
-  * Play a card: `a` or `+` (will prompt an alert for the slot number)
-  * Discard a card: `d` or `-` (will prompt an alert for the slot number)
+  * Play a card: `a` or `+` (will prompt for the slot number)
+  * Discard a card: `d` or `-` (will prompt for the slot number)
   * Clue:
     * `Tab` to select a player
     * `1`, `2`, `3`, `4`, `5` for a rank clue
@@ -272,6 +306,8 @@ If you are playing with the <a href="https://github.com/Zamiell/hanabi-conventio
   * Fast-forward one full rotation: `]`
   * Go to the beginning: `Home`
   * Go to the end: `End`
+* In a shared replay:
+  * Toggle shared turns: `Up` or `Down`
 
 <br />
 
@@ -281,23 +317,41 @@ If you are playing with the <a href="https://github.com/Zamiell/hanabi-conventio
 * If there were no old deals that matched this criteria, the server will generate a new random deal.
 * After the game is completed, the "Other Scores" button on the game history screen will show other players who played the same deal, if any. You can even view the replay of other people's games to see how they played the deal.
 * If two groups of Hanabi players want to compete against each other, then there are a few ways to play a non-randomly generated deal:
-  * Start a game with `!seed [seed]` to play a deal generated by that specific seed. For example: `!seed showmatch-jan-2050-game-1`
-  * Start a game with `!deal [deal]` to play a deal specified by a text file. The text file must already be present on the server in the `specific-deals` directory. If necessary, you can contact an administrator to upload a new text file. For example: `!deal showmatch-jan-2050-game-1`
-  * Start a game with `!replay [id] [turn]` to replay an existing game that is already located in the database. (Specifying the turn number is optional.)
+  * Start a game with a name of `!seed [seed]` to play a deal generated by that specific seed. For example: `!seed showmatch-jan-2050-game-1`
+  * Start a game with a name of `!deal [deal]` to play a deal specified by a text file. The text file must already be present on the server in the `specific-deals` directory. If necessary, you can contact an administrator to upload a new text file. For example: `!deal showmatch-jan-2050-game-1`
+  * Start a game with a name of `!replay [id] [turn]` to replay an existing game that is already located in the database. (Specifying the turn number is optional.)
 
 <br />
 
-## Chat Commands
+## Chat
 
-* The full list of chat commands can be found [here](https://github.com/Zamiell/hanabi-live/blob/master/src/chatHelp.go).
-
-<br />
-
-## Discord Integration
-
+* The website offers a public lobby chat and a private per-game chat. When chatting with other players, please follow [the community guidelines](COMMUNITY_GUIDELINES.md).
+* You can also send private messages to other players with the `/pm` command.
+* You can type any emoji into chat using the [standard emoji shortcode](https://raw.githubusercontent.com/Zamiell/hanabi-live/master/public/js/src/data/emojis.json). For example, `:thinking:` will turn into 🤔.
+* You can type any [Twitch emote](https://raw.githubusercontent.com/Zamiell/hanabi-live/master/public/js/src/data/emotes.json) into chat. For example, `Kappa` will turn into <img src="https://github.com/Zamiell/hanabi-live/raw/master/public/img/emotes/twitch/Kappa.png">. (Many BetterTwitchTV and FrankerFaceZ emotes are also supported.)
+* There are various chat commands. The full list can be found [here](CHAT_COMMANDS.md).
 * All lobby chat will be replicated to (and from) the [Hanabi Discord server](https://discord.gg/FADvkJp).
-* If you are part of the Hyphen-ated group and want to try to get some people together for a game, you can use the `/here` command to ping the other members.
-* If you want the Discord bot to ping you when the next game starts, use the `/next` command to be put on the waiting list.
-* The full list of commands is found in the [chatCommand.go file](https://github.com/Zamiell/hanabi-live/blob/master/src/chatCommand.go).
+
+<br />
+
+## Friends
+
+* When there are a lot of users online and a lot of games going on, it can be cumbersome to find the people you care about. The website supports adding specific people to your friends list with the `/friend` command.
+* Your friends will be listed alphabetically at the top of the user list.
+* Games that contain one or more of your friends will be sorted at the top of the games list.
+
+<br />
+
+## Research & Bots
+
+* The game of Hanabi has relevance to researchers in artificial intelligence:
+  * In 1997, an artifical intelligence named [Deep Blue](https://en.wikipedia.org/wiki/Deep_Blue_(chess_computer)) defeated world-champion [Gary Kasparov](https://en.wikipedia.org/wiki/Garry_Kasparov) in [chess](https://en.wikipedia.org/wiki/Chess).
+  * In 2011, an artificial intelligence named [Watson](https://en.wikipedia.org/wiki/Watson_(computer)) defeated world-champions [Brad Rutter](https://en.wikipedia.org/wiki/Brad_Rutter) and [Ken Jennings](https://en.wikipedia.org/wiki/Ken_Jennings) in [Jeopardy!](https://en.wikipedia.org/wiki/Jeopardy!)
+  * In 2016, an artificial intelligence named [AlphaGo](https://en.wikipedia.org/wiki/AlphaGo) defeated world-champion [Lee Sedol](https://en.wikipedia.org/wiki/Lee_Sedol) in [Go](https://en.wikipedia.org/wiki/Go_(game)).
+  * In 2019, [AI researchers proposed](https://arxiv.org/pdf/1902.00506.pdf) that the next challenge for the AI community should be Hanabi. If bots could successfully cooperate with one another (and cooperate with humans) by demonstrating a [theory of mind](https://en.wikipedia.org/wiki/Theory_of_mind), it would be an important leap forward.
+* A game of Hanabi can be stored as a [JSON](https://www.json.org/json-en.html) object. The Hanabi community uses [the following format](https://raw.githubusercontent.com/Zamiell/hanabi-live/master/misc/example_game_with_comments.json) to specify a game.
+* Hanabi Live supports watching arbitrary games from JSON files. Simply select "Watch Specific Replay" from the menu, select "JSON Data" as the source, and then paste in the JSON data.
+* This is useful for researchers and bot-makers because you can take one of the games that your bot plays and then plug it into Hanabi Live in order to more-easily see what kinds of strategies that it is doing.
+* It is also possible to program a bot to play on the website with other players. Unlike other websites such as [lichess.org](https://lichess.org/), there is no bot-specific API. Bots must connect to the WebSocket server and send messages in exactly the same way that a real player would. A reference bot implementation can be found [here](https://github.com/Zamiell/hanabi-live-bot).
 
 <br />

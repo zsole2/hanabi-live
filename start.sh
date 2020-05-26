@@ -11,9 +11,9 @@ REPO="$(basename "$DIR")"
 # Recompile the Golang code and start the service
 cd "$DIR/src"
 go build -o "$DIR/$REPO"
-if [ $? -eq 0 ]; then
-    # The build was successful; restart the server
-    supervisorctl start "$REPO"
+if [[ $? -eq 0 ]]; then
+  # The build was successful; restart the server
+  supervisorctl start "$REPO"
 else
-    echo "$REPO - Go compilation failed!"
+  echo "$REPO - Go compilation failed!"
 fi

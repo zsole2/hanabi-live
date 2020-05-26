@@ -1,17 +1,9 @@
 # NPM modules are not typically included in a repository
 /node_modules
-/package-lock.json
-
-# We don't need to include the bundled JavaScript
-/main.min.js
-
-# We don't need to include the JavaScript source maps
-# (these are not produced in development, but are still produced server-side in production)
-/main.min.js.map
-/main.min.js.*.map
 
 # We don't need to include the converted TypeScript --> Javascript files
-/dist
+/webpack_output
+/bundles
 
 # Ignore the version number, which will change automatically with every commit
 /src/data/version.json

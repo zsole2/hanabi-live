@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ var (
 	discordToken          string
 	discordListenChannels []string
 	discordLobbyChannel   string
-	discordBotChannel     string
 	discordLastAtHere     time.Time
 	discordBotID          string
 	discordGuildID        string
@@ -45,23 +45,17 @@ func discordInit() {
 			"aborting Discord initialization.")
 		return
 	}
-	discordBotChannel = os.Getenv("DISCORD_BOT_CHANNEL_ID")
-	if len(discordBotChannel) == 0 {
-		logger.Info("The \"DISCORD_BOT_CHANNEL_ID\" environment variable is blank; " +
-			"aborting Discord initialization.")
-		return
-	}
 
 	// Get the last time a "@here" ping was sent
 	var timeAsString string
-	if v, err := models.DiscordMetadata.Get("last_at_here"); err != nil {
-		logger.Fatal("Failed to retrieve the \"last_at_here\" value from the database:", err)
+	if v, err := models.Metadata.Get("discord_last_at_here"); err != nil {
+		logger.Fatal("Failed to retrieve the \"discord_last_at_here\" value from the database:", err)
 		return
 	} else {
 		timeAsString = v
 	}
 	if v, err := time.Parse(time.RFC3339, timeAsString); err != nil {
-		logger.Fatal("Failed to parse the \"last_at_here\" value from the database:", err)
+		logger.Fatal("Failed to parse the \"discord_last_at_here\" value from the database:", err)
 		return
 	} else {
 		discordLastAtHere = v
@@ -98,7 +92,6 @@ func discordConnect() {
 		Msg:    "The server has successfully started at: " + getCurrentTimestamp(),
 		Room:   "lobby",
 		Server: true,
-		Spam:   true,
 	})
 }
 
@@ -109,7 +102,8 @@ func discordRefreshMembers() {
 		// as large servers will only have the first 100 or so cached in "guild.Members" by default
 		// This updates the state in the background
 		if err := discord.RequestGuildMembers(discordGuildID, "", 0); err != nil {
-			logger.Error("Failed to request the Discord guild members:", err)
+			// This can occasionally fail, so we don't want to report the error to Sentry
+			logger.Info("Failed to request the Discord guild members:", err)
 		}
 
 		time.Sleep(5 * time.Minute)
@@ -130,23 +124,11 @@ func discordReady(s *discordgo.Session, event *discordgo.Ready) {
 
 // Copy messages from Discord to the lobby
 func discordMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself
-	if m.Author.ID == discordBotID {
-		return
-	}
-
-	// Check for Discord-only commands in all Discord channels
-	usedCommand := discordCheckCommand(m)
-
-	// Only replicate messages from the listed channels
-	if !stringInSlice(m.ChannelID, discordListenChannels) {
-		return
-	}
-
 	// Get the channel
 	var channel *discordgo.Channel
 	if v, err := discord.Channel(m.ChannelID); err != nil {
-		logger.Error("Failed to get the Discord channel of \""+m.ChannelID+"\":", err)
+		// This can occasionally fail, so we don't want to report the error to Sentry
+		logger.Info("Failed to get the Discord channel of \""+m.ChannelID+"\":", err)
 		return
 	} else {
 		channel = v
@@ -155,6 +137,21 @@ func discordMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Log the message
 	logger.Info("[D#" + channel.Name + "] " +
 		"<" + m.Author.Username + "#" + m.Author.Discriminator + "> " + m.Content)
+
+	// Ignore all messages created by the bot itself
+	if m.Author.ID == discordBotID {
+		return
+	}
+
+	// We want to replicate Discord messages to the Hanabi Live lobby,
+	// but only from specific channels
+	if !stringInSlice(m.ChannelID, discordListenChannels) {
+		// Handle specific commands in non-listening channels
+		// (to replicate lobby functionality to the Discord server more generally)
+		discordCheckCommand(m)
+
+		return
+	}
 
 	// Send everyone the notification
 	commandMutex.Lock()
@@ -168,8 +165,6 @@ func discordMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		DiscordID: m.Author.ID,
 		// Pass through the discriminator so we can append it to the username
 		DiscordDiscriminator: m.Author.Discriminator,
-		// Pass through whether or not we used a Discord-only command
-		DiscordCommand: usedCommand,
 	})
 }
 
@@ -205,7 +200,8 @@ func discordGetNickname(discordID string) string {
 	// Get the Discord guild object
 	var guild *discordgo.Guild
 	if v, err := discord.Guild(guildID); err != nil {
-		logger.Error("Failed to get the Discord guild:", err)
+		// This can occasionally fail, so we don't want to report the error to Sentry
+		logger.Info("Failed to get the Discord guild:", err)
 		return "[error]"
 	} else {
 		guild = v
@@ -227,8 +223,9 @@ func discordGetNickname(discordID string) string {
 	// If the "RequestGuildMembers()" function has not finished populating the "guild.Members",
 	// then the above code block may not find the user
 	// Default to getting the user's username directly from the API
+	// This can occasionally fail, so we don't want to report the error to Sentry
 	if user, err := discord.User(discordID); err != nil {
-		logger.Error("Failed to get the Discord user of \""+discordID+"\":", err)
+		logger.Info("Failed to get the Discord user of \""+discordID+"\":", err)
 		return "[error]"
 	} else {
 		return user.Username
@@ -239,7 +236,8 @@ func discordGetChannel(discordID string) string {
 	// Get the Discord guild object
 	var guild *discordgo.Guild
 	if v, err := discord.Guild(discordListenChannels[0]); err != nil {
-		logger.Error("Failed to get the Discord guild:", err)
+		// This can occasionally fail, so we don't want to report the error to Sentry
+		logger.Info("Failed to get the Discord guild:", err)
 		return ""
 	} else {
 		guild = v
@@ -260,7 +258,8 @@ func discordGetID(username string) string {
 	// Get the Discord guild object
 	var guild *discordgo.Guild
 	if v, err := discord.Guild(discordListenChannels[0]); err != nil {
-		logger.Error("Failed to get the Discord guild:", err)
+		// This can occasionally fail, so we don't want to report the error to Sentry
+		logger.Info("Failed to get the Discord guild:", err)
 		return ""
 	} else {
 		guild = v
@@ -279,8 +278,8 @@ func discordGetID(username string) string {
 
 // We need to check for special commands that occur in Discord channels other than #general
 // (because the messages will not flow to the normal "chatCommandMap")
-func discordCheckCommand(m *discordgo.MessageCreate) bool {
-	// This logic is replicated from the "chatCommand()" function
+func discordCheckCommand(m *discordgo.MessageCreate) {
+	// This code is duplicated from the "chatCommand()" function
 	args := strings.Split(m.Content, " ")
 	command := args[0]
 	args = args[1:] // This will be an empty slice if there is nothing after the command
@@ -288,45 +287,78 @@ func discordCheckCommand(m *discordgo.MessageCreate) bool {
 
 	// Commands will start with a "/", so we can ignore everything else
 	if !strings.HasPrefix(command, "/") {
-		return false
+		return
 	}
 	command = strings.TrimPrefix(command, "/")
 	command = strings.ToLower(command) // Commands are case-insensitive
 
-	if command == "link" || command == "game" || command == "replay" {
+	// This code is duplicated from the "chatReplay()" function
+	if command == "replay" || command == "link" || command == "game" {
 		if len(args) == 0 {
 			discordSend(
 				m.ChannelID,
 				"",
-				"The format of the /link command is: /link [game ID] [turn number]",
+				"The format of the /replay command is: /replay [game ID] [turn number]",
 			)
-			return true
+			return
+		}
+
+		// Validate that the first argument is a number
+		arg1 := args[0]
+		args = args[1:] // This will be an empty slice if there is nothing after the command
+		var id int
+		if v, err := strconv.Atoi(arg1); err != nil {
+			var msg string
+			if _, err := strconv.ParseFloat(arg1, 64); err != nil {
+				msg = "\"" + arg1 + "\" is not a number."
+			} else {
+				msg = "The /replay command only accepts integers."
+			}
+			discordSend(m.ChannelID, "", msg)
+			return
+		} else {
+			id = v
 		}
 
 		// We enclose the link in "<>" to prevent Discord from generating a link preview
-		id := args[0]
-		args = args[1:] // This will be an empty slice if there is nothing after the command
 		if len(args) == 0 {
 			// They specified an ID but not a turn
-			discordSend(m.ChannelID, "", "<https://hanabi.live/replay/"+id+">")
-			return true
+			msg := "<https://hanabi.live/replay/" + strconv.Itoa(id) + ">"
+			discordSend(m.ChannelID, "", msg)
+			return
 		}
 
-		turn := args[0]
-		args = args[1:] // This will be an empty slice if there is nothing after the command
-		if len(args) == 0 {
-			// They specified an ID and a turn
-			discordSend(m.ChannelID, "", "<https://hanabi.live/replay/"+id+"/"+turn+">")
-			return true
+		// Validate that the second argument is a number
+		arg2 := args[0]
+		var turn int
+		if v, err := strconv.Atoi(arg2); err != nil {
+			var msg string
+			if _, err := strconv.ParseFloat(arg2, 64); err != nil {
+				msg = "\"" + arg2 + "\" is not a number."
+			} else {
+				msg = "The /replay command only accepts integers."
+			}
+			discordSend(m.ChannelID, "", msg)
+			return
+		} else {
+			turn = v
 		}
 
-		// They specified an ID and a turn and typed a message afterward
-		msg := "<https://hanabi.live/replay/" + id + "/" + turn + "> " + strings.Join(args, "")
+		// They specified an ID and a turn
+		msg := "<https://hanabi.live/replay/" + strconv.Itoa(id) + "/" + strconv.Itoa(turn) + ">"
 		discordSend(m.ChannelID, "", msg)
-		return true
+		return
 	}
 
-	// Do not display an error message on an invalid command because normal commands are parsed
-	// later on when they are replicated to the lobby in the "chatCommand()" function
-	return false
+	if command == "badquestion" {
+		msg := "Your question is not specific enough. In order to properly answer it, we need to know the amount of players in the game, all of the cards in all of the hands, the amount of current clues, and so forth. Please type out a full Alice and Bob story in the style of the reference document. (e.g. <https://github.com/Zamiell/hanabi-conventions/blob/master/Reference.md#the-reverse-finesse>)"
+		discordSend(m.ChannelID, "", msg)
+		return
+	}
+
+	if command == "2pquestion" {
+		msg := "Ask questions about 2-player games in the #2-player channel."
+		discordSend(m.ChannelID, "", msg)
+		return
+	}
 }

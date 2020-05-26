@@ -5,21 +5,21 @@
 # Contains secrets
 .env
 
-# Log files
-logs/*.log*
-
-# Directories
-backups
-
 # The compiled binary
 hanabi-live
 hanabi-live~
 
-# VS Code stuff
-.vscode
+# Temporary files
+compiling_client
+
+# The message of the day
+motd.txt
 
 # MacOS artifacts
 .DS_Store
+
+# MySQL data from Docker
+mysql_data
 
 # --------------------------
 # GitHub .gitignore Template

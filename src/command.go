@@ -6,7 +6,7 @@ type CommandData struct {
 	GameID  int `json:"gameID"`
 
 	// setting
-	Value string `json:"value"`
+	Setting string `json:"setting"`
 
 	// chat
 	Msg       string `json:"msg"`
@@ -28,9 +28,9 @@ type CommandData struct {
 	AlertWaiters         bool   `json:"alertWaiters"`
 
 	// action
-	Clue   Clue `json:"clue"`
-	Target int  `json:"target"`
-	Type   int  `json:"type"`
+	Type   int `json:"type"`
+	Target int `json:"target"`
+	Value  int `json:"value"`
 
 	// note
 	Note  string `json:"note"`
@@ -73,19 +73,12 @@ type CommandData struct {
 	Username string `json:"-"` // Used to mark the username of a chat message
 	Discord  bool   `json:"-"` // Used to mark if a chat message origined from Discord
 	Server   bool   `json:"-"` // Used to mark if the server generated the chat message
-	Spam     bool   `json:"-"` // True if it should go to the "bot" channel
 	// True if this is a chat message that should only go to Discord
 	OnlyDiscord          bool   `json:"-"`
 	DiscordID            string `json:"-"` // Used when echoing a message from Discord to the lobby
 	DiscordDiscriminator string `json:"-"` // Used when echoing a message from Discord to the lobby
-	DiscordCommand       bool   `json:"-"` // Used when echoing a message from Discord to the lobby
 	// Used to pass chat command arguments to a chat command handler
 	Args []string `json:"-"`
-}
-
-type Clue struct {
-	Type  int `json:"type"`
-	Value int `json:"value"`
 }
 
 var (
@@ -112,6 +105,8 @@ func commandInit() {
 	commandMap["chatPM"] = commandChatPM
 	commandMap["chatRead"] = commandChatRead
 	commandMap["chatTyping"] = commandChatTyping
+	commandMap["chatFriend"] = commandChatFriend
+	commandMap["chatUnfriend"] = commandChatUnfriend
 	commandMap["inactive"] = commandInactive
 	commandMap["getName"] = commandGetName
 	commandMap["historyGetDeals"] = commandHistoryGetDeals
@@ -119,8 +114,8 @@ func commandInit() {
 	commandMap["replayCreate"] = commandReplayCreate
 
 	// Game commands
-	commandMap["hello"] = commandHello
-	commandMap["ready"] = commandReady
+	commandMap["getGameInfo1"] = commandGetGameInfo1
+	commandMap["getGameInfo2"] = commandGetGameInfo2
 	commandMap["action"] = commandAction
 	commandMap["note"] = commandNote
 	commandMap["pause"] = commandPause

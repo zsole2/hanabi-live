@@ -37,14 +37,14 @@ func suitsInit() {
 		return
 	}
 
-	uniqueNameMap := make(map[string]bool)
+	uniqueNameMap := make(map[string]struct{})
 	for name, suit := range suits {
 		// Validate that all of the names are unique
 		if _, ok := uniqueNameMap[name]; ok {
 			logger.Fatal("There are two suits with the name of \"" + name + "\".")
 			return
 		}
-		uniqueNameMap[name] = true
+		uniqueNameMap[name] = struct{}{}
 
 		// Validate the suit name
 		if suit.Name == "" {
@@ -84,10 +84,9 @@ func suitsInit() {
 			// The clue colors were not specified; by default, use the color of the same name
 			if _, ok := colors[name]; ok {
 				suit.ClueColors = []string{name}
-			} else if name != "Unknown" {
-				// The "Unknown" suit is not supposed to have clue colors
-				logger.Fatal("The suit of \"" + name + "\" has no clue colors defined and there " +
-					"is no color of the same name.")
+			} else if name != "Unknown" { // The "Unknown" suit is not supposed to have clue colors
+				logger.Fatal("The suit of \"" + name + "\" " +
+					"has no clue colors defined and there is no color of the same name.")
 				return
 			}
 		}
